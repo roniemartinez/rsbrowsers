@@ -1,0 +1,5 @@
+[project]
+name = "rsbrowsers_examples"
+version = "0.1.0"
+description = "rsbrowsers examples"
+requires-python = ">=3.8"
