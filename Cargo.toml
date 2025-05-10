@@ -1,7 +1,13 @@
 [package]
-name = "rsbrowsers"
-version = "0.1.0-a1"
-edition = "2021"
+name = "browsers"
+readme = "README.md"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
@@ -9,4 +15,17 @@ name = "browsers"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.24.0"
+pyo3 = { version = "0.24.2" , features = []}
+rsbrowsers = { path = "./rsbrowsers" }
+
+[workspace]
+members = ["rsbrowsers"]
+
+[workspace.package]
+version = "0.1.0-a2"
+authors = ["Ronie Martinez <ronmarti18@gmail.com>"]
+edition = "2024"
+description = "Find and launch browsers."
+license = "MIT"
+homepage = "https://github.com/roniemartinez/rsbrowsers"
+repository = "https://github.com/roniemartinez/rsbrowsers"

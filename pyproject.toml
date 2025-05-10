@@ -6,9 +6,19 @@ build-backend = "maturin"
 name = "rsbrowsers"
 requires-python = ">=3.8"
 classifiers = [
-    "Programming Language :: Rust",
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Rust",
 ]
 dynamic = ["version"]
 
@@ -16,4 +26,9 @@ dynamic = ["version"]
 features = ["pyo3/extension-module"]
 
 [tool.uv]
-cache-keys = [{file = "pyproject.toml"}, {file = "Cargo.toml"}, {file = "src/*.rs"}]
+cache-keys = [{ file = "pyproject.toml" }, { file = "Cargo.toml" }, { file = "src/*.rs" }]
+
+[tool.uv.workspace]
+members = [
+    "examples",
+]
