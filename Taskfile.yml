@@ -10,3 +10,6 @@ tasks:
   publish-test:
     cmds:
       - maturin publish -r testpypi --no-sdist
+
+  test:
+    cmd: uv run pytest

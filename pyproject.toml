@@ -22,13 +22,25 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
+
 [tool.maturin]
 features = ["pyo3/extension-module"]
 
 [tool.uv]
-cache-keys = [{ file = "pyproject.toml" }, { file = "Cargo.toml" }, { file = "src/*.rs" }]
+cache-keys = [{ file = "pyproject.toml" }, { file = "Cargo.toml" }, { file = "src/*.rs" }, { file = "rsbrowsers/Cargo.toml" }, { file = "rsbrowsers/src/*.rs" }]
 
 [tool.uv.workspace]
 members = [
     "examples",
 ]
+
+[tool.pytest.ini_options]
+addopts = """\
+    -vv \
+    -x \
+    -s \
+"""
