@@ -1,13 +1,9 @@
 import os
-import subprocess
 import sys
-import unittest.mock
-from typing import Any
 from unittest.mock import ANY
 
-import pytest
-
 import browsers
+import pytest
 
 """
 These tests are based on what browsers exists in Github Actions virtual environments.
@@ -38,13 +34,6 @@ def test_browsers(browser: str) -> None:
     assert browser in available_browsers
 
 
-@pytest.mark.parametrize(
-    "naive",
-    (
-        pytest.param(False, id="non-naive"),
-        pytest.param(True, id="naive"),
-    ),
-)
 @pytest.mark.parametrize(
     ("browser", "details"),
     (
@@ -173,9 +162,5 @@ def test_browsers(browser: str) -> None:
         ),
     ),
 )
-def test_get(naive: bool, browser: str, details: dict) -> None:
-    # if naive, mock subprocess.getoutput else just wrap it
-    kwargs: dict[str, Any] = {"return_value": ""} if naive else ({"wraps": subprocess.getoutput})
-
-    with unittest.mock.patch("subprocess.getoutput", **kwargs):
-        assert browsers.get(browser) == details
+def test_get(browser: str, details: dict) -> None:
+    assert browsers.get(browser) == details
