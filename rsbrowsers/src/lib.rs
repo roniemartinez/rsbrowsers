@@ -1,8 +1,10 @@
-use glob::{MatchOptions, Pattern};
+use glob::{MatchOptions, Pattern, glob};
+use std::collections::HashMap;
+use std::iter::Iterator;
 use std::process::{Child, Command};
 use std::vec::IntoIter;
 #[cfg(target_os = "macos")]
-use {plist::Value, std::path::Path};
+use {plist::Dictionary, plist::Value, std::path::Path};
 
 #[cfg(target_os = "windows")]
 use {
@@ -24,7 +26,7 @@ use {
 
 #[cfg(target_os = "macos")]
 const OSX_BROWSER_BUNDLE_LIST: &[(&str, &str, &str)] = &[
-    // browser name, bundle ID, version string
+    // browser type, bundle ID, version string
     ("basilisk", "org.mozilla.basilisk", "CFBundleShortVersionString"),
     ("brave", "com.brave.Browser", "CFBundleVersion"),
     ("brave-beta", "com.brave.Browser.beta", "CFBundleVersion"),
@@ -131,33 +133,41 @@ pub struct BrowserFinder {
 }
 
 #[cfg(target_os = "macos")]
-fn extract_info_from_plist(application_path: &str, browser_type: &str, version_string: &str) -> Browser {
-    let base_path = Path::new(application_path);
-    let path = base_path.join("Contents/Info.plist");
-    let properties = Value::from_file(path).unwrap();
+fn get_browser_info(app_dir: &Path, browser_type: &str, plist: &Dictionary, version_string: &str) -> Option<Browser> {
+    if let Some(executable_name) = plist.get("CFBundleExecutable").and_then(|e| e.as_string()) {
+        if let Some(display_name) =
+            plist.get("CFBundleDisplayName").or(plist.get("CFBundleName")).and_then(|e| e.as_string())
+        {
+            if let Some(version) = plist.get(version_string).and_then(|e| e.as_string()) {
+                let executable = match browser_type {
+                    "safari" | "safari-technology-preview" => app_dir.to_string_lossy().to_string(),
+                    _ => app_dir.join("Contents/MacOS").join(executable_name).as_os_str().to_string_lossy().to_string(),
+                };
 
-    let display_name = properties
-        .as_dictionary()
-        .and_then(|d| d.get("CFBundleDisplayName").or(d.get("CFBundleName")))
-        .and_then(|e| e.as_string())
-        .unwrap_or(browser_type);
+                let version = if browser_type.starts_with("brave") {
+                    let mut reversed_version = version.to_string();
+                    if let [major_minor, patch] = version.splitn(2, '.').take(2).collect::<Vec<&str>>()[0..2] {
+                        if let Ok(major_minor_u32) = major_minor.parse::<u32>() {
+                            let major = major_minor_u32 / 100;
+                            let minor = major_minor_u32 % 100;
+                            reversed_version = format!("{}.{}.{}", major, minor, patch)
+                        }
+                    }
+                    reversed_version
+                } else {
+                    version.to_string()
+                };
 
-    let executable_name =
-        properties.as_dictionary().and_then(|d| d.get("CFBundleExecutable")).and_then(|e| e.as_string()).unwrap();
-
-    let executable = match browser_type {
-        "safari" => base_path.to_str().unwrap().to_owned(),
-        _ => base_path.join("Contents/MacOS").join(executable_name).to_str().unwrap().to_owned(),
-    };
-
-    let version = properties.as_dictionary().and_then(|d| d.get(version_string)).and_then(|e| e.as_string()).unwrap();
-
-    Browser {
-        browser_type: browser_type.to_owned(),
-        display_name: display_name.to_owned(),
-        path: executable,
-        version: version.to_owned(),
+                return Some(Browser {
+                    browser_type: browser_type.to_owned(),
+                    display_name: display_name.to_owned(),
+                    path: executable,
+                    version,
+                });
+            }
+        }
     }
+    None
 }
 
 #[cfg(target_os = "windows")]
@@ -223,20 +233,84 @@ impl BrowserFinder {
         let exclude_pattern = Pattern::new(self.exclude.as_str()).unwrap();
 
         #[cfg(target_os = "macos")]
-        for (browser_type, bundle_id, version_string) in OSX_BROWSER_BUNDLE_LIST.iter() {
-            let result = Command::new("mdfind").arg(format!("kMDItemCFBundleIdentifier=='{bundle_id}'")).output();
-            if let Ok(output) = result {
-                browsers.extend(
-                    String::from_utf8(output.stdout)
-                        .unwrap()
-                        .lines()
-                        .map(String::from)
-                        .map(|application| extract_info_from_plist(application.as_str(), browser_type, version_string))
-                        .filter(|browser| {
-                            Self::matches_patterns(browser, &browser_pattern, &version_pattern, &exclude_pattern)
-                        })
-                        .collect::<Vec<Browser>>(),
-                )
+        {
+            for (browser_type, bundle_id, version_string) in OSX_BROWSER_BUNDLE_LIST.iter() {
+                if let Ok(output) =
+                    Command::new("mdfind").arg(format!("kMDItemCFBundleIdentifier=='{bundle_id}'")).output()
+                {
+                    if let Ok(stdout) = String::from_utf8(output.stdout) {
+                        browsers.extend(
+                            stdout
+                                .lines()
+                                .map(String::from)
+                                .map(|application| {
+                                    let application_dir = Path::new(application.as_str());
+                                    if let Ok(properties) =
+                                        Value::from_file(application_dir.join("Contents/Info.plist"))
+                                    {
+                                        if let Some(dictionary) = properties.as_dictionary() {
+                                            return get_browser_info(
+                                                application_dir,
+                                                browser_type,
+                                                dictionary,
+                                                version_string,
+                                            );
+                                        }
+                                    }
+                                    None
+                                })
+                                .flatten()
+                                .filter(|browser| {
+                                    Self::matches_patterns(
+                                        browser,
+                                        &browser_pattern,
+                                        &version_pattern,
+                                        &exclude_pattern,
+                                    )
+                                })
+                                .collect::<Vec<Browser>>(),
+                        )
+                    }
+                }
+            }
+
+            // TODO: Is there a compile time version of this? phf don't seem to support it.
+            let mut osx_browser_bundle_dict: HashMap<&str, (&str, &str, &str)> = HashMap::new();
+            for (browser_type, bundle_id, version_string) in OSX_BROWSER_BUNDLE_LIST {
+                osx_browser_bundle_dict.insert(bundle_id, (browser_type, bundle_id, version_string));
+            }
+
+            if let Ok(entries) = glob("/Applications/*.app/Contents/Info.plist") {
+                for entry in entries {
+                    if let Ok(path) = entry {
+                        if let Ok(properties) = Value::from_file(path.clone()) {
+                            if let Some(dictionary) = properties.as_dictionary() {
+                                if let Some(value) = dictionary.get("CFBundleIdentifier") {
+                                    if let Some(bundle_id) = value.as_string() {
+                                        if !osx_browser_bundle_dict.contains_key(bundle_id) {
+                                            continue;
+                                        }
+                                        let (browser_type, _, version_string) = osx_browser_bundle_dict[bundle_id];
+                                        if let Some(app_dir) = path.ancestors().nth(2) {
+                                            if let Some(browser) =
+                                                get_browser_info(app_dir, browser_type, dictionary, version_string)
+                                            {
+                                                if Self::matches_patterns(
+                                                    &browser,
+                                                    &browser_pattern,
+                                                    &version_pattern,
+                                                    &exclude_pattern,
+                                                ) {
+                                                    browsers.push(browser);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -310,6 +384,8 @@ impl BrowserFinder {
             }
         }
 
+        browsers.sort_by_key(|b| b.path.clone());
+        browsers.dedup_by_key(|b| b.path.clone());
         browsers.into_iter()
     }
 
