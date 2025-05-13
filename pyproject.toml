@@ -41,6 +41,5 @@ members = [
 [tool.pytest.ini_options]
 addopts = """\
     -vv \
-    -x \
     -s \
 """
